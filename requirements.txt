@@ -1,1 +1,2 @@
 metaflow==2.6.1
+awswrangler==2.16.0

@@ -3,8 +3,6 @@ name: main metaflow action
 on:
   push:
     branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
 
   workflow_dispatch:
 
