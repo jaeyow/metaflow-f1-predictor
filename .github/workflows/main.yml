@@ -27,5 +27,5 @@ jobs:
 
       - name: Metaflow scripts => Data Collection
         run: |
-          python '01-data-collection-flow.py' run
+          python 'f1-predictor-pipeline.py' run
 
