@@ -65,6 +65,9 @@ class F1PredictorPipeline(FlowSpec):
         self.results_df.loc[self.results_df['Driver']==driver, "DriverExperience"] = df_driver['DriverExperience'].cumsum()
         self.results_df['DriverExperience'].fillna(value=0,inplace=True)
 
+    print(self.results_df.head())
+    print(self.results_df.columns)    
+
     print('Feature Engineering - Constructor Experience')
     # Feature Engineering - Constructor Experience
     self.results_df['ConstructorExperience'] = 0
@@ -75,6 +78,9 @@ class F1PredictorPipeline(FlowSpec):
         
         self.results_df.loc[self.results_df['Constructor']==constructor, "ConstructorExperience"] = df_constructor['ConstructorExperience'].cumsum()
         self.results_df['ConstructorExperience'].fillna(value=0,inplace=True)
+
+    print(self.results_df.head())
+    print(self.results_df.columns)        
 
     print('Feature Engineering - Driver Recent Wins')
     # Feature Engineering - Driver Recent Wins
@@ -89,6 +95,9 @@ class F1PredictorPipeline(FlowSpec):
         self.results_df.loc[mask_first_place_drivers, "DriverRecentWins"] = self.results_df[mask_first_place_drivers]['DriverRecentWins'] - 1  # but don't count this race's win
         self.results_df['DriverRecentWins'].fillna(value=0,inplace=True)
 
+    print(self.results_df.head())
+    print(self.results_df.columns)  
+
     print('Feature Engineering - Driver Recent DNFs')
     # Feature Engineering - Driver Recent DNFs
     self.results_df['DriverRecentDNFs'] = 0
@@ -101,6 +110,9 @@ class F1PredictorPipeline(FlowSpec):
         self.results_df.loc[self.results_df['Driver']==driver, "DriverRecentDNFs"] = self.results_df[self.results_df['Driver']==driver]['DriverRecentDNFs'].rolling(60).sum() # 60 races, about 3 years rolling
         self.results_df.loc[mask_not_finish_place_drivers, "DriverRecentDNFs"] = self.results_df[mask_not_finish_place_drivers]['DriverRecentDNFs'] - 1  # but don't count this race
         self.results_df['DriverRecentDNFs'].fillna(value=0,inplace=True)
+
+    print(self.results_df.head())
+    print(self.results_df.columns)
 
     print('Feature Engineering - Fix Recent Form Points')
     # Feature Engineering - Fix Recent Form Points
@@ -118,6 +130,37 @@ class F1PredictorPipeline(FlowSpec):
             
             self.results_df.loc[(mask) & finisher_mask, "RFPoints"] = point_list[:finished_count].tolist()
 
+    print(self.results_df.head())
+    print(self.results_df.columns)
+
+    print('Feature Engineering - Driver Recent Form')
+    # Feature Engineering - Driver Recent Form
+    self.results_df['DriverRecentForm'] = 0
+    # for all drivers, calculate the rolling X DriverRecentForm and add to a new column in 
+    # original data frame, this represents the 'recent form', then for NA's just impute to zero
+    self.drivers = self.results_df['Driver'].unique()
+    for driver in self.drivers:
+        df_driver = self.results_df[self.results_df['Driver']==driver]
+        self.results_df.loc[self.results_df['Driver']==driver, "DriverRecentForm"] = df_driver['RFPoints'].rolling(30).sum() - df_driver['RFPoints'] # calcluate recent form points but don't include this race's points
+        self.results_df['DriverRecentForm'].fillna(value=0,inplace=True)
+
+    print(self.results_df.head())
+    print(self.results_df.columns)
+
+    print('Feature Engineering - Constructor Recent Form')
+    # Feature Engineering - Constructor Recent Form
+    self.results_df['ConstructorRecentForm'] = 0
+    # for all constructors, calculate the rolling X RFPoints and add to a new column in 
+    # original data frame, this represents the 'recent form', then for NA's just impute to zero
+    self.constructors = self.results_df['Constructor'].unique()
+    for constructor in self.constructors:
+        df_constructor = self.results_df[self.results_df['Constructor']==constructor]
+        self.results_df.loc[self.results_df['Constructor']==constructor, "ConstructorRecentForm"] = df_constructor['RFPoints'].rolling(30).sum() - df_constructor['RFPoints'] # calcluate recent form points but don't include this race's points
+        self.results_df['ConstructorRecentForm'].fillna(value=0,inplace=True)
+
+    print(self.results_df.head())
+    print(self.results_df.columns)
+
     print('Feature Engineering - Driver Age')
     # Feature Engineering - Driver Age
     def calculate_age(born, race):
@@ -126,6 +169,9 @@ class F1PredictorPipeline(FlowSpec):
         return date_race.year - date_born.year - ((date_race.month, date_race.day) < (date_born.month, date_born.day))
 
     self.results_df['Age'] = self.results_df.apply(lambda x: calculate_age(x['DOB'], x['Race Date']), axis=1)
+
+    print(self.results_df.head())
+    print(self.results_df.columns)
 
     print('Feature Engineering - Home Circuit')
     # Feature Engineering - Home Circuit
@@ -184,27 +230,8 @@ class F1PredictorPipeline(FlowSpec):
 
     self.results_df['IsHomeCountry'] = self.results_df.apply(lambda x: is_race_in_home_country(x['Nationality'], x['Country']), axis=1)     
 
-    print('Feature Engineering - Driver Recent Form')
-    # Feature Engineering - Driver Recent Form
-    self.results_df['DriverRecentForm'] = 0
-    # for all drivers, calculate the rolling X DriverRecentForm and add to a new column in 
-    # original data frame, this represents the 'recent form', then for NA's just impute to zero
-    self.drivers = self.results_df['Driver'].unique()
-    for driver in self.drivers:
-        self.results_df = self.results_df[self.results_df['Driver']==driver]
-        self.results_df.loc[self.results_df['Driver']==driver, "DriverRecentForm"] = self.results_df['RFPoints'].rolling(30).sum() - self.results_df['RFPoints'] # calcluate recent form points but don't include this race's points
-        self.results_df['DriverRecentForm'].fillna(value=0,inplace=True)
-
-    print('Feature Engineering - Constructor Recent Form')
-    # Feature Engineering - Constructor Recent Form
-    self.results_df['ConstructorRecentForm'] = 0
-    # for all constructors, calculate the rolling X RFPoints and add to a new column in 
-    # original data frame, this represents the 'recent form', then for NA's just impute to zero
-    self.constructors = self.results_df['Constructor'].unique()
-    for constructor in self.constructors:
-        df_constructor = self.results_df[self.results_df['Constructor']==constructor]
-        self.results_df.loc[self.results_df['Constructor']==constructor, "ConstructorRecentForm"] = df_constructor['RFPoints'].rolling(30).sum() - df_constructor['RFPoints'] # calcluate recent form points but don't include this race's points
-        self.results_df['ConstructorRecentForm'].fillna(value=0,inplace=True)
+    print(self.results_df.head())
+    print(self.results_df.columns)
 
     print('Feature Engineering - Dummify categorical features')
     # Feature Engineering - Dummify categorical features
@@ -220,17 +247,23 @@ class F1PredictorPipeline(FlowSpec):
         else:
             pass
 
+    print(self.results_df.head())
+    print(self.results_df.columns)
+
     print('Feature Engineering - Drop Columns which are not needed/required for modelling')
     # Feature Engineering - Drop Columns which are not needed/required for modelling
     self.results_df.drop(['Race Date', 'Race Time', 'Status', 'DOB', 'Constructor', 'Constructor Nat', 'Circuit Name',
                     'Race Url', 'Lat', 'Long', 'Locality', 'Country','Laps','Points',
                     'RFPoints'], axis=1, inplace=True)
 
+    print(self.results_df.head())
+    print(self.results_df.columns)
+
     print('Feature Engineering - convert Season to numeric')
     # Feature Engineering - convert Season to numeric
     self.results_df['Season'] = pd.to_numeric(self.results_df['Season'])
-    # print(f'Final: {self.results_df.columns}')
-    print(self.results_df.head())
+    # print(self.results_df.head())
+    print(f'Final: {self.results_df.columns}')
 
     self.algos = ["Algorithm 1", "Algorothm 2"]
     self.next(self.train_model, foreach="algos")
