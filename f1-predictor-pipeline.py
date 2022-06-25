@@ -32,8 +32,7 @@ class F1PredictorPipeline(FlowSpec):
 		import awswrangler as wr
 
 		print(f'F1PredictorPipeline ==> get_dataset...')
-		self.results_df = wr.s3.read_csv(
-				's3://metaflow-f1-predictor/part-1/csvs/latest_race_results.csv')
+		self.results_df = wr.s3.read_csv('s3://metaflow-f1-predictor/part-1/csvs/latest_race_results.csv')
 		self.results_df.drop(columns=['Unnamed: 0'], inplace=True)
 		print(self.results_df.head())
 		print(self.results_df.shape)
@@ -389,13 +388,12 @@ class F1PredictorPipeline(FlowSpec):
 			Feature Engineering - Drop Columns which are not needed/required for modelling
 			------------------------------------------------------------------------------
 
-			Dummify the following parameters, and just drop irrelevant columns
+			Drop irrelevant columns to prevent model bloat and improve training and inference time
 
 			New dataframe shape: {self.results_df.shape}
 		"""
 		)
 
-		print('Feature Engineering - convert Season to numeric')
 		self.results_df['Season'] = pd.to_numeric(self.results_df['Season'])
 
 		print(
