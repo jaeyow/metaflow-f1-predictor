@@ -246,9 +246,6 @@ class F1PredictorPipeline(FlowSpec):
 		"""
 		)
 
-		print('Feature Engineering - Driver Age')
-		# Feature Engineering - Driver Age
-
 		def calculate_age(born, race):
 				date_born = datetime.strptime(born, '%Y-%m-%d')
 				date_race = datetime.strptime(race, '%Y-%m-%d')
@@ -366,9 +363,9 @@ class F1PredictorPipeline(FlowSpec):
 
 			Dummify applicable categorical variables and ensure that the variables for the model are all numeric.
 
-				-	Weather
-				- Race name (circuit)
-				- Driver nationality
+			- Weather
+			- Race name (circuit)
+			- Driver nationality
 
 			New dataframe shape: {self.results_df.shape}
 		"""
