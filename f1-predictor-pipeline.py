@@ -419,8 +419,10 @@ class F1PredictorPipeline(FlowSpec):
 		self.scaler = MinMaxScaler()
 		self.X_train = pd.DataFrame(self.scaler.fit_transform(X_train, self.y_train), columns = X_train.columns)
 
-		self.next(self.joses_dumb_classifier_train_and_test,
-			self.linear_regression_train_and_test)
+		self.next(
+			self.joses_dumb_classifier_train_and_test,
+			self.linear_regression_train_and_test,
+			self.adaboost_regression_train_and_test)
 
 	def regression_test_score(self, model, print_output=False):
 		from sklearn.metrics import precision_score
@@ -547,6 +549,53 @@ class F1PredictorPipeline(FlowSpec):
 		self.next(self.test_model_join)
 
 	@step
+	def adaboost_regression_train_and_test(self):
+		"""
+		AdaBoost Regression
+		"""
+		from timeit import default_timer as timer
+		from sklearn.ensemble import AdaBoostRegressor
+
+		def adaboost_regressor(X_train, y_train):
+			params={'n_estimators': [100,200,300],
+					'learning_rate': [0.001,0.01,0.1,1],
+					'loss': ['linear','square','exponential']}
+
+			for n_estimators in params['n_estimators']:
+				for learning_rate in params['learning_rate']:
+					for loss in params['loss']:
+						start = timer()
+						model_params = (n_estimators, learning_rate, loss)
+						model = AdaBoostRegressor(random_state=0, n_estimators=n_estimators, learning_rate=learning_rate, loss=loss)
+						model.fit(X_train, y_train)
+						end = timer()
+						self.scoring_raw['train_time'].append(end - start)
+
+						start = timer()
+						model_score = self.regression_test_score(model)
+						end = timer()
+
+						self.scoring_raw['model'].append('AdaBoost Regressor')
+						self.scoring_raw['score'].append(np.round(model_score*100, 3))
+						self.scoring_raw['params'].append(model_params)
+						self.scoring_raw['test_time'].append(end - start)
+			
+		print(
+		f"""
+		***************************************************************************
+
+			AdaBoost Regression
+
+		***************************************************************************
+
+		"""
+		)
+
+		adaboost_regressor(self.X_train, self.y_train)
+		self.running_score = pd.DataFrame(self.scoring_raw)	
+		self.next(self.test_model_join)
+
+	@step
 	def test_model_join(self, join_inputs):
 			"""
 			Join our parallel model training branches and decide the winning model
@@ -554,6 +603,8 @@ class F1PredictorPipeline(FlowSpec):
 			print(f'F1PredictorPipeline ==> test_model_join...')
 			# for input in join_inputs:
 			# 		print(f'F1PredictorPipeline ==>  Using {input.algorithm}...')
+
+			print(self.results_df.head(200))
 
 			self.next(self.deploy_winning_model)
 
