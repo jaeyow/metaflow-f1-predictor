@@ -2,3 +2,4 @@ metaflow==2.6.1
 awswrangler==2.16.0
 sklearn==0.0
 comet_ml==3.31.5
+python-dotenv==0.20.0

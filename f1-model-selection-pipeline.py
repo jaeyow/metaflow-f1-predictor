@@ -1,8 +1,6 @@
-from unicodedata import name
-from metaflow import FlowSpec, step, current, environment
-from comet_ml import Experiment, API
+from metaflow import FlowSpec, step, current
+from comet_ml import Experiment
 from datetime import datetime
-from sklearn.base import BaseEstimator
 from sklearn.model_selection import GridSearchCV
 import numpy as np
 import pandas as pd
