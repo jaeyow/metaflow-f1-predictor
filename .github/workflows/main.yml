@@ -23,11 +23,11 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-      - name: Metaflow scripts => Run F1 Predictor ML Pipeline
+      - name: Metaflow scripts => Run F1 Model Selection ML Pipeline
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ap-southeast-2
         run: |
-          python 'f1-predictor-pipeline.py' run
+          python 'f1-model-selection-pipeline.py' run
 
