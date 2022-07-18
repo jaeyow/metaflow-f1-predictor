@@ -535,10 +535,10 @@ class F1ModelSelectorPipeline(FlowSpec):
     from sklearn.ensemble import GradientBoostingRegressor
 
     self.hypers={
-      'n_estimators': [100], #,200,300],
-      'learning_rate': [0.001], #,0.01,0.1,1],
-      'subsample': [0.001], #,0.1,1],
-      'max_depth': [5], #,10,20]
+      'n_estimators': [100,200,300],
+      'learning_rate': [0.001,0.01,0.1,1],
+      'subsample': [0.001,0.1,1],
+      'max_depth': [5,10,20]
     }
 
     def gradientboosting_regressor(X_train, y_train):
@@ -585,9 +585,9 @@ class F1ModelSelectorPipeline(FlowSpec):
     from sklearn.ensemble import AdaBoostRegressor
 
     self.hypers={
-      'n_estimators': [100], #,200,300],
-      'learning_rate': [0.001], #,0.01,0.1,1],
-      'loss': ['linear'], #,'square','exponential']
+      'n_estimators': [100,200,300],
+      'learning_rate': [0.001,0.01,0.1,1],
+      'loss': ['linear','square','exponential']
     }
 
     def adaboost_regressor(X_train, y_train):
@@ -634,11 +634,11 @@ class F1ModelSelectorPipeline(FlowSpec):
     from sklearn.ensemble import BaggingRegressor
 
     self.hypers={
-      'n_estimators': [100], #,200,300],
-      'max_samples': [10], #,20,30],
-      'max_features': [20], #40,50],
-      'bootstrap': [True], #,False],
-      'bootstrap_features': [True], #,False]
+      'n_estimators': [100,200,300],
+      'max_samples': [10,20,30],
+      'max_features': [20,40,50],
+      'bootstrap': [True,False],
+      'bootstrap_features': [True,False]
     }
 
     def bagging_regressor(X_train, y_train):
