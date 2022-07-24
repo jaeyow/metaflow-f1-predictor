@@ -430,11 +430,14 @@ class F1ModelSelectorPipeline(FlowSpec):
     self.scaler = MinMaxScaler()
     self.X_train = pd.DataFrame(self.scaler.fit_transform(X_train, self.y_train), columns = X_train.columns)
 
+    # run all these training tasks in parallel
     self.next(
       self.linear_regression_train_and_test,
       self.gradient_boosting_regressor_train_and_test,
       self.adaboost_regressor_train_and_test,
-      self.bagging_regressor_train_and_test)
+      self.bagging_regressor_train_and_test,
+      self.mlp_regressor_train_and_test,
+      self.random_forest_regressor_train_and_test)
 
   # Test the model against the test split 
   def regression_test_score(self, model, print_output=False):
@@ -538,7 +541,7 @@ class F1ModelSelectorPipeline(FlowSpec):
       'n_estimators': [100,200,300],
       'learning_rate': [0.001,0.01,0.1,1],
       'subsample': [0.001,0.1,1],
-      'max_depth': [5,10,20]
+      'max_depth': [510,20]
     }
 
     def gradientboosting_regressor(X_train, y_train):
@@ -632,11 +635,12 @@ class F1ModelSelectorPipeline(FlowSpec):
     """
     from timeit import default_timer as timer
     from sklearn.ensemble import BaggingRegressor
+    from sklearn.tree import DecisionTreeRegressor
 
     self.hypers={
-      'n_estimators': [100,200,300],
+      'n_estimators': [200,200,300],
       'max_samples': [10,20,30],
-      'max_features': [20,40,50],
+      'max_features': [50,40,50],
       'bootstrap': [True,False],
       'bootstrap_features': [True,False]
     }
@@ -653,7 +657,7 @@ class F1ModelSelectorPipeline(FlowSpec):
       """
       )
 
-      model = BaggingRegressor(random_state=45)
+      model = BaggingRegressor(random_state=45, base_estimator=DecisionTreeRegressor())
       model_type = 'BaggingRegressor'      
       grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
       grid_search_start = timer()
@@ -675,6 +679,104 @@ class F1ModelSelectorPipeline(FlowSpec):
 
     self.model_result = bagging_regressor(self.X_train, self.y_train)
     self.next(self.join_branches)       
+
+  @step
+  def mlp_regressor_train_and_test(self):
+    """
+    MLP Neural Network Regressor
+    """
+    from timeit import default_timer as timer
+    from sklearn.neural_network import MLPRegressor
+
+    self.hypers={
+      'hidden_layer_sizes': [(80,20,40,5), (75,30,50,10,3)], 
+      'activation': ['identity', 'relu','logistic',], 
+      'solver': ['lbfgs','sgd', 'adam'], 
+      'alpha': np.logspace(-4,1,10)
+    }
+
+    def mlp_regressor(X_train, y_train):
+      print(
+      f"""
+      ***************************************************************************
+
+        MLP Regressor
+
+      ***************************************************************************
+
+      """
+      )
+
+      model = MLPRegressor(random_state=45, max_iter=500)
+      model_type = 'MLPRegressor'      
+      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
+      grid_search_start = timer()
+      grid.fit(X_train, y_train)
+      grid_search_end = timer()
+      
+      # run test and calculate precision
+      test_start = timer()
+      model_score = self.regression_test_score(grid)
+      print(f'model score: {model_score}')
+      test_end = timer()
+      
+      return {
+        'model_type': model_type,
+        'grid_search_train_time': grid_search_end - grid_search_start,
+        'inference_time': test_end - test_start,
+        'precision': np.round(model_score, 3)
+      }
+
+    self.model_result = mlp_regressor(self.X_train, self.y_train)
+    self.next(self.join_branches)
+
+  @step
+  def random_forest_regressor_train_and_test(self):
+    """
+    Random Forest Regressor
+    """
+    from timeit import default_timer as timer
+    from sklearn.ensemble import RandomForestRegressor
+
+    self.hypers={
+      'n_estimators': [100,200,300],
+      'max_depth': [10]
+    }
+
+    def randomforest_regressor(X_train, y_train):
+      print(
+      f"""
+      ***************************************************************************
+
+        Random Forest Regressor
+
+      ***************************************************************************
+
+      """
+      )
+
+      model = RandomForestRegressor(random_state=51)
+      model_type = 'RandomForestRegressor'      
+      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
+      grid_search_start = timer()
+      grid.fit(X_train, y_train)
+      grid_search_end = timer()
+      
+      # run test and calculate precision
+      test_start = timer()
+      model_score = self.regression_test_score(grid)
+      print(f'model score: {model_score}')
+      test_end = timer()
+      
+      return {
+        'model_type': model_type,
+        'grid_search_train_time': grid_search_end - grid_search_start,
+        'inference_time': test_end - test_start,
+        'precision': np.round(model_score, 3)
+      }
+
+    self.model_result = randomforest_regressor(self.X_train, self.y_train)
+    self.next(self.join_branches)    
 
   @step
   def join_branches(self, join_inputs):
