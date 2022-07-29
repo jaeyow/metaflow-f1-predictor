@@ -1,7 +1,6 @@
 from metaflow import FlowSpec, step, current
-from comet_ml import Experiment
+from comet_ml import API, Experiment
 from datetime import datetime
-from sklearn.model_selection import GridSearchCV
 import numpy as np
 import pandas as pd
 import os
@@ -29,6 +28,13 @@ class F1ModelSelectorPipeline(FlowSpec):
     print("username: %s" % current.username)
 
     assert os.environ['COMET_API_KEY']
+
+    comet_exp_detail = Experiment(
+        api_key=os.environ['COMET_API_KEY'],
+        project_name="f1-model-selector",
+        workspace="jaeyow"
+      )
+    self.comet_experiment_key = comet_exp_detail.get_key() # this is a string so it's safe to pickle
     self.next(self.transform_data)
 
   @step
@@ -413,10 +419,6 @@ class F1ModelSelectorPipeline(FlowSpec):
     """
     )
 
-    # Prepare train set for the training
-    # now setup the global variable to keep track of results
-    # self.scoring_raw ={'model':[], 'params': [], 'score': [], 'train_time': [], 'test_time': []}
-
     from sklearn.preprocessing import MinMaxScaler
 
     np.set_printoptions(precision=4)
@@ -434,10 +436,7 @@ class F1ModelSelectorPipeline(FlowSpec):
     self.next(
       self.linear_regression_train_and_test,
       self.gradient_boosting_regressor_train_and_test,
-      self.adaboost_regressor_train_and_test,
-      self.bagging_regressor_train_and_test,
-      self.mlp_regressor_train_and_test,
-      self.random_forest_regressor_train_and_test)
+      self.adaboost_regressor_train_and_test)
 
   # Test the model against the test split 
   def regression_test_score(self, model, print_output=False):
@@ -499,34 +498,31 @@ class F1ModelSelectorPipeline(FlowSpec):
       """
       )
 
-      model = LinearRegression()
-      model_type = 'LinearRegression'
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      test_start = timer()
-      
-      # run test and calculate precision
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
-      
-      # note: the following code has concurrency issues as multiple parallel paths log their metrics,
-      # workaround is to save metrics in memory and log them to Comet in the join step
-      # comet_exp.log_parameter('model_type', model_type)
-      # comet_exp.log_metric('grid_search_train_time', grid_search_end - grid_search_start)
-      # comet_exp.log_metric('best_estimator_test_time', test_end - test_start)
-      # comet_exp.log_metric('precision', np.round(model_score, 3))
+      comet_exp = API().get_experiment_by_key(self.comet_experiment_key)
+      self.comet_experiment_key = self.comet_experiment_key      
+      index = 1
+      for fit_intercept in self.hypers['fit_intercept']:
+        train_start = timer()
+        model_params = (fit_intercept)
+        model = LinearRegression(fit_intercept = fit_intercept)
+        model.fit(X_train, y_train)
+        train_end = timer()
 
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
+        test_start = timer()
+        model_score = self.regression_test_score(model)
+        test_end = timer()
 
-    self.model_result = linear_regression(self.X_train, self.y_train)
+        model_name = "Linear Regression"
+        comet_exp.log_metric(f'{model_name} (Precision)', np.round(model_score*100, 3), index)
+        comet_exp.log_metric(f'{model_name} (Params)', str(model_params), index)
+        comet_exp.log_metric(f'{model_name} (Train Time)', train_end - train_start, index)
+        comet_exp.log_metric(f'{model_name} (Test Time)', test_end - test_start, index)
+        index+=1
+        print(f'{model_name}: {model_params}, {np.round(model_score*100, 3)}, {train_end - train_start}, {test_end - test_start}')
+
+      return
+
+    linear_regression(self.X_train, self.y_train)
     self.next(self.join_branches)
 
   @step
@@ -541,7 +537,7 @@ class F1ModelSelectorPipeline(FlowSpec):
       'n_estimators': [100,200,300],
       'learning_rate': [0.001,0.01,0.1,1],
       'subsample': [0.001,0.1,1],
-      'max_depth': [510,20]
+      'max_depth': [5,10,20]
     }
 
     def gradientboosting_regressor(X_train, y_train):
@@ -556,27 +552,36 @@ class F1ModelSelectorPipeline(FlowSpec):
       """
       )
 
-      model = GradientBoostingRegressor(random_state=43)
-      model_type = 'GradientBoostingRegressor'
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      
-      # run test and calculate precision
-      test_start = timer()
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
-      
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
+      comet_exp = API().get_experiment_by_key(self.comet_experiment_key)
+      self.comet_experiment_key = self.comet_experiment_key
+      index = 1
+      for n_estimators in self.hypers['n_estimators']:
+        for learning_rate in self.hypers['learning_rate']:
+          for subsample in self.hypers['subsample']:
+            for max_depth in self.hypers['max_depth']:
+              train_start = timer()
+              model_params = (n_estimators, learning_rate, subsample, max_depth)
+              model = GradientBoostingRegressor(random_state=0, n_estimators=n_estimators,
+                                          learning_rate=learning_rate, subsample=subsample,
+                                            max_depth=max_depth)
+              model.fit(X_train, y_train)
+              train_end = timer()
 
-    self.model_result = gradientboosting_regressor(self.X_train, self.y_train)
+              test_start = timer()
+              model_score = self.regression_test_score(model)
+              test_end = timer()
+
+              model_name = "Gradient Boosting Regressor"
+              comet_exp.log_metric(f'{model_name} (Precision)', np.round(model_score*100, 3), index)
+              comet_exp.log_metric(f'{model_name} (Params)', str(model_params), index)
+              comet_exp.log_metric(f'{model_name} (Train Time)', train_end - train_start, index)
+              comet_exp.log_metric(f'{model_name} (Test Time)', test_end - test_start, index)
+              index+=1              
+              print(f'{model_name}: {model_params}, {np.round(model_score*100, 3)}, {train_end - train_start}, {test_end - test_start}')
+
+      return
+
+    gradientboosting_regressor(self.X_train, self.y_train)
     self.next(self.join_branches)
 
   @step
@@ -605,216 +610,45 @@ class F1ModelSelectorPipeline(FlowSpec):
       """
       )
 
-      model = AdaBoostRegressor(random_state=44)
-      model_type = 'AdaBoostRegressor'
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      
-      # run test and calculate precision
-      test_start = timer()
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
+      comet_exp = API().get_experiment_by_key(self.comet_experiment_key)
+      self.comet_experiment_key = self.comet_experiment_key      
+      index = 1
+      for n_estimators in self.hypers['n_estimators']:
+        for learning_rate in self.hypers['learning_rate']:
+          for loss in self.hypers['loss']:
+            train_start = timer()
+            model_params = (n_estimators, learning_rate, loss)
+            model = AdaBoostRegressor(random_state=0, n_estimators=n_estimators, learning_rate=learning_rate, loss=loss)
+            model.fit(X_train, y_train)
+            train_end = timer()
 
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
+            test_start = timer()
+            model_score = self.regression_test_score(model)
+            test_end = timer()
 
-    self.model_result = adaboost_regressor(self.X_train, self.y_train)
+            model_name = "AdaBoost Regressor"
+            comet_exp.log_metric(f'{model_name} (Precision)', np.round(model_score*100, 3), index)
+            comet_exp.log_metric(f'{model_name} (Params)', str(model_params), index)
+            comet_exp.log_metric(f'{model_name} (Train Time)', train_end - train_start, index)
+            comet_exp.log_metric(f'{model_name} (Test Time)', test_end - test_start, index)
+            index+=1
+            print(f'{model_name}: {model_params}, {np.round(model_score*100, 3)}, {train_end - train_start}, {test_end - test_start}')
+
+      return
+
+    adaboost_regressor(self.X_train, self.y_train)
     self.next(self.join_branches)
-
-  @step
-  def bagging_regressor_train_and_test(self):
-    """
-    Bagging Regressor
-    """
-    from timeit import default_timer as timer
-    from sklearn.ensemble import BaggingRegressor
-    from sklearn.tree import DecisionTreeRegressor
-
-    self.hypers={
-      'n_estimators': [200,200,300],
-      'max_samples': [10,20,30],
-      'max_features': [50,40,50],
-      'bootstrap': [True,False],
-      'bootstrap_features': [True,False]
-    }
-
-    def bagging_regressor(X_train, y_train):
-      print(
-      f"""
-      ***************************************************************************
-
-        Bagging Regressor
-
-      ***************************************************************************
-
-      """
-      )
-
-      model = BaggingRegressor(random_state=45, base_estimator=DecisionTreeRegressor())
-      model_type = 'BaggingRegressor'      
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      
-      # run test and calculate precision
-      test_start = timer()
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
-      
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
-
-    self.model_result = bagging_regressor(self.X_train, self.y_train)
-    self.next(self.join_branches)       
-
-  @step
-  def mlp_regressor_train_and_test(self):
-    """
-    MLP Neural Network Regressor
-    """
-    from timeit import default_timer as timer
-    from sklearn.neural_network import MLPRegressor
-
-    self.hypers={
-      'hidden_layer_sizes': [(80,20,40,5), (75,30,50,10,3)], 
-      'activation': ['identity', 'relu','logistic',], 
-      'solver': ['lbfgs','sgd', 'adam'], 
-      'alpha': np.logspace(-4,1,10)
-    }
-
-    def mlp_regressor(X_train, y_train):
-      print(
-      f"""
-      ***************************************************************************
-
-        MLP Regressor
-
-      ***************************************************************************
-
-      """
-      )
-
-      model = MLPRegressor(random_state=45, max_iter=500)
-      model_type = 'MLPRegressor'      
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      
-      # run test and calculate precision
-      test_start = timer()
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
-      
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
-
-    self.model_result = mlp_regressor(self.X_train, self.y_train)
-    self.next(self.join_branches)
-
-  @step
-  def random_forest_regressor_train_and_test(self):
-    """
-    Random Forest Regressor
-    """
-    from timeit import default_timer as timer
-    from sklearn.ensemble import RandomForestRegressor
-
-    self.hypers={
-      'n_estimators': [100,200,300],
-      'max_depth': [10]
-    }
-
-    def randomforest_regressor(X_train, y_train):
-      print(
-      f"""
-      ***************************************************************************
-
-        Random Forest Regressor
-
-      ***************************************************************************
-
-      """
-      )
-
-      model = RandomForestRegressor(random_state=51)
-      model_type = 'RandomForestRegressor'      
-      grid = GridSearchCV(model, self.hypers, cv=None, verbose=2)
-      grid_search_start = timer()
-      grid.fit(X_train, y_train)
-      grid_search_end = timer()
-      
-      # run test and calculate precision
-      test_start = timer()
-      model_score = self.regression_test_score(grid)
-      print(f'model score: {model_score}')
-      test_end = timer()
-      
-      return {
-        'model_type': model_type,
-        'grid_search_train_time': grid_search_end - grid_search_start,
-        'inference_time': test_end - test_start,
-        'precision': np.round(model_score, 3)
-      }
-
-    self.model_result = randomforest_regressor(self.X_train, self.y_train)
-    self.next(self.join_branches)    
 
   @step
   def join_branches(self, join_inputs):
     """
     Join our parallel model training branches and decide the winning model
     """
-
     print(f'F1ModelSelectorPipeline ==> test_model_join...')
+    experiment_key = join_inputs[0].comet_experiment_key
+    comet_exp = API().get_experiment_by_key(experiment_key)
+    comet_exp.end()
 
-    # Log the Summary Metrics
-    comet_exp_summary = Experiment(
-      api_key=os.environ['COMET_API_KEY'],
-      project_name="f1-model-selector-summary",
-      workspace="jaeyow"
-    )
-    for input in join_inputs:
-      # Log Summary to Summary Experiment
-      print(f'Log Summary to Summary Experiment: {input.model_result["model_type"]}')
-      print(f'Precision: {input.model_result["precision"]}')
-      comet_exp_summary.log_metric(f'{input.model_result["model_type"]}_inference_time', input.model_result['inference_time'])
-      comet_exp_summary.log_metric(f'{input.model_result["model_type"]}_precision', input.model_result['precision'])
-    comet_exp_summary.end()
-
-    # Then log the Detailed Metrics
-    for input in join_inputs:
-      comet_exp = Experiment(
-        api_key=os.environ['COMET_API_KEY'],
-        project_name="f1-model-selector",
-        workspace="jaeyow"
-      )
-
-      # Log each algorithm detail matrics in own experiment
-      comet_exp.log_parameter('model_type', input.model_result["model_type"])
-      comet_exp.log_metric('grid_search_train_time', input.model_result["inference_time"])
-      comet_exp.log_metric('best_estimator_test_time', input.model_result["grid_search_train_time"])
-      comet_exp.log_metric('precision', np.round(input.model_result["precision"], 3))
-      comet_exp.end()    
-    
     self.next(self.select_winning_model)
 
   @step
@@ -831,7 +665,6 @@ class F1ModelSelectorPipeline(FlowSpec):
     Anything that you want to do before finishing the pipeline is done here
     """
     print("F1ModelSelectorPipeline is all done.")
-
 
 if __name__ == "__main__":
   F1ModelSelectorPipeline()
